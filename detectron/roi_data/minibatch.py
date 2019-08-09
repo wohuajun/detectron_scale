@@ -57,8 +57,11 @@ from rotation import *
 logger = logging.getLogger(__name__)
 
 # crop裁剪图片是的长宽占比
-WIDTH_REGION = cfg.TRAIN.CROP_WIDTH 
-HEIGHT_REGION = cfg.TRAIN.CROP_HEIGHT 
+CROP_SCALE = cfg.TRAIN.CROP_SCALE
+WIDTH_REGION = CROP_SCALE
+HEIGHT_REGION = CROP_SCALE
+# WIDTH_REGION = cfg.TRAIN.CROP_WIDTH 
+# HEIGHT_REGION = cfg.TRAIN.CROP_HEIGHT  
 # 当对MaskRcnn开启时需要对实例分割点进行变换
 MASKRCNN_SWITCH = cfg.TRAIN.MASKRCNN_SWITCH
 
@@ -200,7 +203,7 @@ def _get_img_blob_mul(roidb):
         processed_img.append(im)
         imgs_scale.append(imscale)                             
         all_roidb.append(roidb[i])
-
+        #print("roidb:---------------------",roidb[i])
         img_ = img.copy()   # 其实在原图做完计算之后可以不用考虑值会改变的事了
 
 
@@ -238,7 +241,7 @@ def _get_img_blob_mul(roidb):
                         #  一定要做二值化,否则出来的是散点
                         ret, binary = cv2.threshold(gray,127,255,cv2.THRESH_BINARY)  
                         _, contours, hierarchy = cv2.findContours(binary,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE) 
-                        #img_fill = cv2.drawContours(imag, contours,-1,(0,255,0),-1)
+                        img_fill = cv2.drawContours(imag, contours,-1,(0,255,0),-1)
                         #cv2.imwrite("mask_single_fill.jpg", img_fill)
                         if len(contours) > 0:
                             #print("------------------contours:-----------------",contours)
@@ -253,12 +256,12 @@ def _get_img_blob_mul(roidb):
                                 elif con_point[0][0][1] == img_crop_h -1:
                                     con_point[0][0][1] = img_crop_h - 2
                                 else: pass
-                            roi_s = list(np.array(contours).reshape(1,-1))
+                            roi_s = np.array(contours).reshape(1,-1)
                             area = float(int(cv2.contourArea(contours[0])))
-                            segms.append(list(roi_s))
+                            segms.append(roi_s.tolist())
                             seg_areas.append(area)
-                            segms_ = []
-                            # 验证mask框-----
+                            # segms_ = []
+                            # # 验证mask框-----
                             # for rk, roi_k in enumerate(segms):
                             #     roi_k = np.array(roi_k).reshape(-1,1,2)
                             #     segms_.append(roi_k)
@@ -269,8 +272,8 @@ def _get_img_blob_mul(roidb):
 
                     # ---------------------------------------------------------------------------------
                 
-                new_roidb['segms'] = list(segms)
-                new_roidb['seg_areas'] = seg_areas
+                new_roidb['segms'] = segms
+                new_roidb['seg_areas'] = np.array(seg_areas, dtype = np.float32)
                 
             time_end = time.time()
             time_used = time_end - time_start
