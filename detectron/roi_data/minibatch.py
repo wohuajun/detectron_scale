@@ -209,6 +209,7 @@ def _get_img_blob_mul(roidb):
 
         #  深拷贝以避免改变原始图像数据
         img_ = copy.deepcopy(img_[coor[0]:coor[1],coor[2]:coor[3]])
+        cv2.imwrite("crop_image.jpg", img_)
 
 
 
@@ -217,6 +218,63 @@ def _get_img_blob_mul(roidb):
 
             target_size = cfg.TRAIN.SCALES[scale_inds[i]]
             im, imscale = blob_utils.prep_im_for_blob(img_, cfg.PIXEL_MEANS, target_size, cfg.TRAIN.MAX_SIZE)
+
+            time_start = time.time()
+            if MASKRCNN_SWITCH : 
+                segms = []
+                seg_areas = []
+                #print("roidb:---------------------",new_roidb )
+                if len(new_roidb['segms'])>0:
+                    for m_s, roi_s in enumerate(new_roidb['segms']):
+                        roi_s = np.array(roi_s[0][:-4]).reshape(1,-1,2)
+                        img_se = np.zeros((roidb[i]['height'], roidb[i]['width'], 3))
+                        img_se_ = img_se.copy()[coor[0]:coor[1], coor[2]:coor[3]]
+                        imag = cv2.drawContours(img_se, [roi_s],-1,(255,255,255),-1)
+                        #cv2.imwrite("mask_raw.jpg", imag)
+                        imag = imag[coor[0]:coor[1], coor[2]:coor[3]]
+                        cv2.imwrite("mask_single.jpg", imag)
+                        imag = cv2.imread("mask_single.jpg") 
+                        gray = cv2.cvtColor(imag, cv2.COLOR_BGR2GRAY)  
+                        #  一定要做二值化,否则出来的是散点
+                        ret, binary = cv2.threshold(gray,127,255,cv2.THRESH_BINARY)  
+                        _, contours, hierarchy = cv2.findContours(binary,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE) 
+                        #img_fill = cv2.drawContours(imag, contours,-1,(0,255,0),-1)
+                        #cv2.imwrite("mask_single_fill.jpg", img_fill)
+                        if len(contours) > 0:
+                            #print("------------------contours:-----------------",contours)
+                            for kk, con_point in enumerate(contours):
+                                if con_point[0][0][0] == 0:
+                                    con_point[0][0][0] = 1
+                                elif con_point[0][0][0] == img_crop_w -1:
+                                    con_point[0][0][0] = img_crop_w - 2
+                                else: pass
+                                if con_point[0][0][1] == 0:
+                                    con_point[0][0][1] = 1
+                                elif con_point[0][0][1] == img_crop_h -1:
+                                    con_point[0][0][1] = img_crop_h - 2
+                                else: pass
+                            roi_s = list(np.array(contours).reshape(1,-1))
+                            area = float(int(cv2.contourArea(contours[0])))
+                            segms.append(list(roi_s))
+                            seg_areas.append(area)
+                            segms_ = []
+                            # 验证mask框-----
+                            # for rk, roi_k in enumerate(segms):
+                            #     roi_k = np.array(roi_k).reshape(-1,1,2)
+                            #     segms_.append(roi_k)
+                            # #print("!!!!!points!!!!!!!",segms_)
+                            # imag_ = cv2.drawContours(img_se_, segms_ ,-1,(255,255,255),-1)
+                            # cv2.imwrite("maskrcnn_crop.jpg", imag_)
+
+
+                    # ---------------------------------------------------------------------------------
+                
+                new_roidb['segms'] = list(segms)
+                new_roidb['seg_areas'] = seg_areas
+                
+            time_end = time.time()
+            time_used = time_end - time_start
+            print("Maskrcnn 裁剪耗时{}".format(time_used))
             processed_img.append(im)
             imgs_scale.append(imscale)
             all_roidb.append(new_roidb)
