@@ -56,6 +56,32 @@ from rotation import *
 
 logger = logging.getLogger(__name__)
 
+# 多尺度是在loader.py中已经决定的
+# ----------------------------------多色彩变换相关参数-----------------------------
+MULTI_COLOR = cfg.TRAIN.MULTI_COLOR
+# gaussian模糊的相关参数
+GAUSSIAN = cfg.TRAIN.GAUSSIAN                     # 是否做高斯
+GAUSSIAN_KERNEL = cfg.TRAIN.GAUSSIAN_KERNEL       # 高斯核
+GAUSSIAN_SIGMAX = cfg.TRAIN.GAUSSIAN_SIGMAX       # 高斯sigmax值
+
+# 对比度和亮度增强相关参数
+CAB = cfg.TRAIN.CAB + GAUSSIAN 
+ALPHA = cfg.TRAIN.ALPHA
+GAMMA = cfg.TRAIN.GAMMA
+
+# GAMMA变换的相关参数
+GAMMA = cfg.TRAIN.GAMMA + CAB
+GAMMA_THRESHOLD = cfg.TRAIN.GAMMA_THRESHOLD 
+
+# HSV亮度通道变换
+HSV = cfg.TRAIN.HSV + GAMMA 
+HSV_THRESHOLD = cfg.TRAIN.HSV_THRESHOLD
+
+# 像素比例值参数
+BRIGHT = cfg.TRAIN.BRIGHT + HSV
+BRIGHT_THRESHOLD = cfg.TRAIN.BRIGHT_THRESHOLD
+
+# ------------------------------------------------------------------------------
 # crop裁剪图片是的长宽占比
 CROP_SCALE = cfg.TRAIN.CROP_SCALE
 WIDTH_REGION = CROP_SCALE
@@ -135,6 +161,31 @@ def _get_image_blob(roidb):
             'Failed to read image \'{}\''.format(roidb[i]['image'])    # 如果图像不存在则assert
         if roidb[i]['flipped']:                                        # 如果图的flipped为翻转,则翻转 
             im = im[:, ::-1, :]                                        # 对图像的宽做倒序  即x轴flipped
+
+        img_ = im
+        #-------------在无多尺度版本中增加色彩模块----------------------------------
+        if MULTI_COLOR:
+            color_random =  random.uniform(0,1)
+            #print("color_random--------------",color_random)
+            if color_random <= GAUSSIAN:
+                #print("高斯")
+                img_ =  randomGaussian(img_, GAUSSIAN_KERNEL, GAUSSIAN_SIGMAX)
+            elif color_random > GAUSSIAN and color_random <= CAB:
+                #print("融合暗")
+                img_ = Contrast_and_Brightness(ALPHA, GAMMA, img_)
+            elif color_random > CAB and color_random <= GAMMA:
+                #print("GAMMA")
+                img_ = gamma_trans(img_, GAMMA_THRESHOLD)
+            elif color_random > GAMMA and color_random <= HSV:
+                #print("HSV")
+                img_ = img2darker(img_, HSV_THRESHOLD)
+            elif color_random > HSV and color_random <= BRIGHT:
+                #print("BRIGHT")
+                img_ = bright_trans(img_, BRIGHT_THRESHOLD)
+            else:
+                pass
+            
+        #-----------------------------------------------------------------------
         # s_t1 = time.time()
         target_size = cfg.TRAIN.SCALES[scale_inds[i]]                  # target_size是600        
         im, im_scale = blob_utils.prep_im_for_blob(                    # im是 resize后的数据, im_scale 是resize的比例  参数中cfg.PIXEL_MEANS/cfg.TRAIN.MAX_SIZE在配置文件中有配置
@@ -207,6 +258,7 @@ def _get_img_blob_mul(roidb):
         img_ = img.copy()   # 其实在原图做完计算之后可以不用考虑值会改变的事了
 
 
+
         # print("copy图像时间：{}".format(t_t_))
         coor, new_boxes_crop, img_crop_w, img_crop_h, index_list =  crop(h, w, roidb[i], WIDTH_REGION, HEIGHT_REGION)
 
@@ -214,66 +266,95 @@ def _get_img_blob_mul(roidb):
         img_ = copy.deepcopy(img_[coor[0]:coor[1],coor[2]:coor[3]])
         cv2.imwrite("crop_image.jpg", img_)
 
+        # ------------------------ 色彩模块 --------------------------
+        if MULTI_COLOR:
+            color_random =  random.uniform(0,1)
+            #print("ccccccc",color_random)
+            if color_random <= GAUSSIAN:
+                #print("高斯")
+                img_ =  randomGaussian(img_, GAUSSIAN_KERNEL, GAUSSIAN_SIGMAX)
+            elif color_random > GAUSSIAN and color_random <= CAB:
+                #print("融合暗")
+                img_ = Contrast_and_Brightness(ALPHA, GAMMA, img_)
+            elif color_random > CAB and color_random <= GAMMA:
+                #print("GAMMA")
+                img_ = gamma_trans(img_, GAMMA_THRESHOLD)
+            elif color_random > GAMMA and color_random <= HSV:
+                #print("GAMMA")
+                img_ = img2darker(img_, HSV_THRESHOLD)
+            elif color_random > HSV and color_random <= BRIGHT:
+                #print("GAMMA")
+                img_ = bright_trans(img_, BRIGHT_THRESHOLD)
+            else:
+                pass
+            
+        #----------------------------------------------------------
 
 
         if not new_boxes_crop  == []:
-            new_roidb = creat_new_roidb(roidb[i], img_crop_w, img_crop_h, new_boxes_crop, index_list)
+            time_start = time.time()
+            new_roidb = creat_new_roidb(roidb[i], img_crop_w, img_crop_h, new_boxes_crop, index_list,coor, MASKRCNN_SWITCH)  #MASKRCNN_SWITCH)
 
             target_size = cfg.TRAIN.SCALES[scale_inds[i]]
             im, imscale = blob_utils.prep_im_for_blob(img_, cfg.PIXEL_MEANS, target_size, cfg.TRAIN.MAX_SIZE)
 
-            time_start = time.time()
-            if MASKRCNN_SWITCH : 
-                segms = []
-                seg_areas = []
-                #print("roidb:---------------------",new_roidb )
-                if len(new_roidb['segms'])>0:
-                    for m_s, roi_s in enumerate(new_roidb['segms']):
-                        roi_s = np.array(roi_s[0][:-4]).reshape(1,-1,2)
-                        img_se = np.zeros((roidb[i]['height'], roidb[i]['width'], 3))
-                        img_se_ = img_se.copy()[coor[0]:coor[1], coor[2]:coor[3]]
-                        imag = cv2.drawContours(img_se, [roi_s],-1,(255,255,255),-1)
-                        #cv2.imwrite("mask_raw.jpg", imag)
-                        imag = imag[coor[0]:coor[1], coor[2]:coor[3]]
-                        cv2.imwrite("mask_single.jpg", imag)
-                        imag = cv2.imread("mask_single.jpg") 
-                        gray = cv2.cvtColor(imag, cv2.COLOR_BGR2GRAY)  
-                        #  一定要做二值化,否则出来的是散点
-                        ret, binary = cv2.threshold(gray,127,255,cv2.THRESH_BINARY)  
-                        _, contours, hierarchy = cv2.findContours(binary,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE) 
-                        img_fill = cv2.drawContours(imag, contours,-1,(0,255,0),-1)
-                        #cv2.imwrite("mask_single_fill.jpg", img_fill)
-                        if len(contours) > 0:
-                            #print("------------------contours:-----------------",contours)
-                            for kk, con_point in enumerate(contours):
-                                if con_point[0][0][0] == 0:
-                                    con_point[0][0][0] = 1
-                                elif con_point[0][0][0] == img_crop_w -1:
-                                    con_point[0][0][0] = img_crop_w - 2
-                                else: pass
-                                if con_point[0][0][1] == 0:
-                                    con_point[0][0][1] = 1
-                                elif con_point[0][0][1] == img_crop_h -1:
-                                    con_point[0][0][1] = img_crop_h - 2
-                                else: pass
-                            roi_s = np.array(contours).reshape(1,-1)
-                            area = float(int(cv2.contourArea(contours[0])))
-                            segms.append(roi_s.tolist())
-                            seg_areas.append(area)
-                            # segms_ = []
-                            # # 验证mask框-----
-                            # for rk, roi_k in enumerate(segms):
-                            #     roi_k = np.array(roi_k).reshape(-1,1,2)
-                            #     segms_.append(roi_k)
-                            # #print("!!!!!points!!!!!!!",segms_)
-                            # imag_ = cv2.drawContours(img_se_, segms_ ,-1,(255,255,255),-1)
-                            # cv2.imwrite("maskrcnn_crop.jpg", imag_)
+            # -----maskrcnn相关的的实例分割的相关代码已集成到creat_new_roidb模块中
+            # time_start = time.time()
+            # if MASKRCNN_SWITCH : 
+            #     segms = []
+            #     seg_areas = []
+            #     #print("roidb:---------------------",new_roidb )
+            #     if len(new_roidb['segms'])>0:
+            #         for m_s, roi_s in enumerate(new_roidb['segms']):
+            #             roi_s = np.array(roi_s[0][:-4]).reshape(1,-1,2)
+            #             img_se = np.zeros((roidb[i]['height'], roidb[i]['width'], 3))
+            #             #img_se = np.zeros((roidb[i]['height'], roidb[i]['width']))
+            #             img_se_ = img_se.copy()[coor[0]:coor[1], coor[2]:coor[3]]
+            #             imag = cv2.drawContours(img_se, [roi_s],-1,(255,255,255),-1)
+            #             #cv2.imwrite("mask_raw.jpg", imag)
+            #             imag = imag[coor[0]:coor[1], coor[2]:coor[3]]
+            #             # 必须转化为uint8格式,才可以进行二值化
+            #             imag =  np.array(imag, dtype = np.uint8)
+            #             #cv2.imwrite("mask_single.jpg", imag)
+            #             #imag = cv2.imread("mask_single.jpg", 3) 
+            #             print("!@#^%^&^*^*",imag.dtype)
+            #             gray = cv2.cvtColor(imag, cv2.COLOR_BGR2GRAY)  
+            #             #  一定要做二值化,否则出来的是散点
+            #             ret, binary = cv2.threshold(gray,127,255,cv2.THRESH_BINARY)  
+            #             _, contours, hierarchy = cv2.findContours(binary,cv2.RETR_TREE,cv2.CHAIN_APPROX_SIMPLE) 
+            #             img_fill = cv2.drawContours(imag, contours,-1,(0,255,0),-1)
+            #             #cv2.imwrite("mask_single_fill.jpg", img_fill)
+            #             if len(contours) > 0:
+            #                 #print("------------------contours:-----------------",contours)
+            #                 for kk, con_point in enumerate(contours):
+            #                     if con_point[0][0][0] == 0:
+            #                         con_point[0][0][0] = 1
+            #                     elif con_point[0][0][0] == img_crop_w -1:
+            #                         con_point[0][0][0] = img_crop_w - 2
+            #                     else: pass
+            #                     if con_point[0][0][1] == 0:
+            #                         con_point[0][0][1] = 1
+            #                     elif con_point[0][0][1] == img_crop_h -1:
+            #                         con_point[0][0][1] = img_crop_h - 2
+            #                     else: pass
+            #                 roi_s = np.array(contours).reshape(1,-1)
+            #                 area = float(int(cv2.contourArea(contours[0])))
+            #                 segms.append(roi_s.tolist())
+            #                 seg_areas.append(area)
+            #                 # segms_ = []
+            #                 # # 验证mask框-----
+            #                 # for rk, roi_k in enumerate(segms):
+            #                 #     roi_k = np.array(roi_k).reshape(-1,1,2)
+            #                 #     segms_.append(roi_k)
+            #                 # #print("!!!!!points!!!!!!!",segms_)
+            #                 # imag_ = cv2.drawContours(img_se_, segms_ ,-1,(255,255,255),-1)
+            #                 # cv2.imwrite("maskrcnn_crop.jpg", imag_)
 
 
-                    # ---------------------------------------------------------------------------------
+            #         # ---------------------------------------------------------------------------------
                 
-                new_roidb['segms'] = segms
-                new_roidb['seg_areas'] = np.array(seg_areas, dtype = np.float32)
+            #     new_roidb['segms'] = segms
+            #     new_roidb['seg_areas'] = np.array(seg_areas, dtype = np.float32)
                 
             time_end = time.time()
             time_used = time_end - time_start

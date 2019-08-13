@@ -21,9 +21,13 @@ def random_corp(width, height, width_random_region, height_random_region):
     image_width = width
     image_height = height
     # 生成随机因子
-    width_random = random.uniform(width_random_region[0], width_random_region[1])
+    # ------锁定为固定裁剪尺度-----------
+    width_random = width_random_region
+    height_random = height_random_region
+    # ------锁定为固定裁剪尺度-----------
+    # width_random = random.uniform(width_random_region[0], width_random_region[1])
     # height_random = random.uniform(height_random_region[0], height_random_region[1])
-    height_random = width_random # 长宽尺度一致 是否需要高级设置
+    # height_random = width_random # 长宽尺度一致 是否需要高级设置
     # 待裁剪框的高和宽的大小
     new_width = int(image_width*width_random)
     new_height = int(image_height*height_random)
@@ -61,7 +65,7 @@ def area_overlap(x1, y1, w1, h1, x2, y2, w2, h2):
         return overlap_area / area2 
 
 
-def crop(h ,w,roidb_data, width_region = [0.5, 0.9], height_region = [0.5, 0.9], area_threshold = 0.5):
+def crop(h ,w,roidb_data, width_region = 0.5, height_region = 0.5, area_threshold = 0.5):
     # 通过roidb读取图片 并获取图片的高和宽的数据
     roidb = roidb_data
     # 用copy,因为原图的img数据本身也需要被训练
@@ -94,7 +98,8 @@ def crop(h ,w,roidb_data, width_region = [0.5, 0.9], height_region = [0.5, 0.9],
         area_overlap_value = area_overlap(x_start_coor, y_start_coor, img_crop_w, img_crop_h, x_src_min, y_src_min, box_w, box_h)
         # 如果速度不理想可以按照坐标先排除不重叠的框和完全包含的框,只计算部分重叠部分,进行计算并裁剪box
         # 如果重叠小于设定的阈值,不将改框添加至新的new_boxes_crop的list
-        if area_overlap_value < area_threshold:
+        # if area_overlap_value < area_threshold:
+        if area_overlap_value < (area_threshold*w_region):
             pass
         # 如果重叠部分为全部包含,不将改框添加至新的new_boxes_crop的list
         # elif area_overlap_value == 1:
@@ -127,7 +132,7 @@ def crop(h ,w,roidb_data, width_region = [0.5, 0.9], height_region = [0.5, 0.9],
 
     return [y_start_coor , y_end_coor, x_start_coor , x_end_coor], new_boxes_crop, img_crop_w, img_crop_h, index_list
 
-#---------------------
+#--------色彩相关模块-------------
 def randomGaussian(image, gauss_kernel, sigmax):
     temp = cv.GaussianBlur(image, (gauss_kernel, gauss_kernel), sigmax)
     return temp
@@ -140,9 +145,29 @@ def Contrast_and_Brightness(alpha, beta, img):
 def random_Gaussian_Brightness():
     pass
 
-#def rot_angle(img,angle):
-#    
-#----------------------
+# 整体像素乘以系数
+def bright_trans(image, threshold):                                                
+
+    image = image * threshold
+
+    return image
+
+# 改变HSV的第三通道的亮度系数
+def img2darker(image, thredshold):                                                 
+    darker_hsv = image.copy()
+    img_hsv = cv.cvtColor(image, cv.COLOR_BGR2HSV)
+    darker_hsv[:,:,2] = thredshold * img_hsv[:,:,2]
+    darker_img = cv.cvtColor(darker_hsv, cv.COLOR_HSV2BGR)
+    return darker_img
+
+# Gamma变换是对输入图像灰度值进行的非线性操作
+def gamma_trans(img, gamma):                                                        
+    gamma_table = [np.power(x/255.0, gamma) * 255.0 for x in range(256)]
+    gamma_table = np.round(np.array(gamma_table)).astype(np.uint8)
+    img_corrected = cv.LUT(img, gamma_table)
+    return img_corrected
+   
+#----------------------------
 
 def compute_bbox_regression_targets(entry):
     """Compute bounding-box regression targets for an image."""
@@ -177,17 +202,11 @@ def compute_bbox_regression_targets(entry):
         ex_rois, gt_rois, cfg.MODEL.BBOX_REG_WEIGHTS)
     return targets
 
-def creat_new_roidb(roidb, img_crop_w, img_crop_h, new_boxes_crop, indexlist):
+def creat_new_roidb(roidb, img_crop_w, img_crop_h, new_boxes_crop, indexlist, coor, MASKRCNN_SWITCH):
     # s_t = time.time()
     #roidb_copy =  copy.deepcopy(roidb)
     roidb_copy = {}
-    # e_t1 = time.time()
-    # t_t1 = e_t1 - s_t
-    # print("计算max_classes 181  耗时{}".format(t_t1))
     roidb_copy['boxes'] = np.array(new_boxes_crop, dtype=np.float32)
-    # e_t2 = time.time()
-    # t_t2 = e_t2 - s_t
-    # print("计算max_classes 185  耗时{}".format(t_t2))
     roidb_copy['width'] = img_crop_w
     roidb_copy['height'] = img_crop_h
     roidb_copy['has_visible_keypoints'] = roidb['has_visible_keypoints']
@@ -202,19 +221,47 @@ def creat_new_roidb(roidb, img_crop_w, img_crop_h, new_boxes_crop, indexlist):
     roidb_copy['is_crowd'] = roidb['is_crowd'][indexlist]
     roidb_copy['box_to_gt_ind_map'] = roidb['box_to_gt_ind_map'][indexlist]
     roidb_copy['max_classes'] = roidb['max_classes'][indexlist]
-    # e_t3 = time.time()
-    # t_t3 = e_t3 - s_t
-    # print("计算max_classes 189  耗时{}".format(t_t3))
     roidb_copy['max_overlaps'] = roidb['max_overlaps'][indexlist]
-    # e_t4 = time.time()
-    # t_t4 = e_t4 - s_t
-    # print("计算box_target前 190  耗时{}".format(t_t4))
     box_target=compute_bbox_regression_targets(roidb_copy)
     roidb_copy['bbox_targets']=box_target
-    # e_t = time.time()
-    # t_t = e_t - s_t
-    # print("创建新的roidb   augment 193  耗时{}".format(t_t))
 
+    if MASKRCNN_SWITCH : 
+        segms = []
+        seg_areas = []
+        #print("roidb:---------------------",new_roidb )
+        if len(roidb_copy['segms'])>0:
+            for m_s, roi_s in enumerate(roidb_copy['segms']):
+                roi_s = np.array(roi_s[0][:-4]).reshape(1,-1,2)
+                img_se = np.zeros((roidb['height'], roidb['width'], 3))
+                img_se_ = img_se.copy()[coor[0]:coor[1], coor[2]:coor[3]]
+                imag = cv.drawContours(img_se, [roi_s],-1,(255,255,255),-1)
+                #cv.imwrite("mask_raw.jpg", imag)
+                imag = imag[coor[0]:coor[1], coor[2]:coor[3]]
+                imag =  np.array(imag, dtype = np.uint8)
+                gray = cv.cvtColor(imag, cv.COLOR_BGR2GRAY)  
+                #  一定要做二值化,否则出来的是散点
+                ret, binary = cv.threshold(gray,127,255,cv.THRESH_BINARY)  
+                _, contours, hierarchy = cv.findContours(binary,cv.RETR_TREE,cv.CHAIN_APPROX_SIMPLE) 
+                img_fill = cv.drawContours(imag, contours,-1,(0,255,0),-1)
+                if len(contours) > 0:
+                    for kk, con_point in enumerate(contours):
+                        if con_point[0][0][0] == 0:
+                            con_point[0][0][0] = 1
+                        elif con_point[0][0][0] == img_crop_w -1:
+                            con_point[0][0][0] = img_crop_w - 2
+                        else: pass
+                        if con_point[0][0][1] == 0:
+                            con_point[0][0][1] = 1
+                        elif con_point[0][0][1] == img_crop_h -1:
+                            con_point[0][0][1] = img_crop_h - 2
+                        else: pass
+                    roi_s = np.array(contours).reshape(1,-1)
+                    area = float(int(cv.contourArea(contours[0])))
+                    segms.append(roi_s.tolist())
+                    seg_areas.append(area)
+ 
+            roidb_copy['segms'] = segms
+            roidb_copy['seg_areas'] = np.array(seg_areas, dtype = np.float32)
     return roidb_copy
 
 
