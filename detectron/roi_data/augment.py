@@ -346,7 +346,7 @@ def creat_rotation_roidb(roidb, angle, l, w_, h_, n_w, n_h, MASKRCNN_SWITCH = Fa
         # Maskrcnn的点的扩增模块----------------------------------------------------------------
         if MASKRCNN_SWITCH : 
             for m_segme, roi_segms in enumerate(roidb_n['segms']):
-                for m_segme_index in range(len(roi_segms)/2):
+                for m_segme_index in range(int(len(roi_segms)/2)):
                     roi_segms[m_segme][m_segme_index] = roi_segms_point + int((l-w_)/2.0)
                     roi_segms[m_segme][m_segme_index + 1] = roi_segms_point + int((l-h_)/2.0)
                     x_segme, y_segme = rot_compute(l/2, l/2, roi_segms[m_segme][m_segme_index], roi_segms[m_segme][m_segme_index + 1], angle)

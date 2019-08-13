@@ -80,6 +80,15 @@ HSV_THRESHOLD = cfg.TRAIN.HSV_THRESHOLD
 # 像素比例值参数
 BRIGHT = cfg.TRAIN.BRIGHT + HSV
 BRIGHT_THRESHOLD = cfg.TRAIN.BRIGHT_THRESHOLD
+# 旋转的相关参数
+# 是否旋转
+ROTATION = cfg.TRAIN.ROTATION
+# 旋转数据的概率
+ROT = cfg.TRAIN.ROT
+# False则转90,180,270
+ROT_RANDOM = cfg.TRAIN.ROT_RANDOM
+# 如果__C.TRAIN.ROT_RANDOM为True,则此设置控制旋转的角度范围
+ROT_RANDOM_ANGLE = cfg.TRAIN.ROT_RANDOM_ANGLE
 
 # ------------------------------------------------------------------------------
 # crop裁剪图片是的长宽占比
@@ -256,7 +265,27 @@ def _get_img_blob_mul(roidb):
         all_roidb.append(roidb[i])
         #print("roidb:---------------------",roidb[i])
         img_ = img.copy()   # 其实在原图做完计算之后可以不用考虑值会改变的事了
+        #----------------------旋转模块-------------------------------
+        # ---------------------尽量不改变原roidb的值
+        roidb_n = roidb[i]
+        if ROTATION:  # 是否旋转
+            rot_random =  random.uniform(0,1)
+            if rot_random <= ROT:
+                if ROT_RANDOM :
+                    angle = random.randint(-ROT_RANDOM_ANGLE,ROT_RANDOM_ANGLE)
+                else: 
+                    angle = random.randint(1,4)
+                    angle = angle * 90.0
+                    
+                img_ , h_, w_, l, n_w, n_h = rotate_image(img_, angle, True)     # 裁剪完后的图
+                angle = (angle / 180.0 * math.pi)
 
+                roidb_n = creat_rotation_roidb(roidb_n, angle, l, w_, h_, n_w, n_h, MASKRCNN_SWITCH)
+
+            else: pass
+        # e_t_ = time.time()
+        # t_t_ = e_t_ - s_t
+        # print("旋转时间_：{}".format(t_t_))
 
 
         # print("copy图像时间：{}".format(t_t_))
@@ -264,7 +293,7 @@ def _get_img_blob_mul(roidb):
 
         #  深拷贝以避免改变原始图像数据
         img_ = copy.deepcopy(img_[coor[0]:coor[1],coor[2]:coor[3]])
-        cv2.imwrite("crop_image.jpg", img_)
+        # cv2.imwrite("crop_image.jpg", img_)
 
         # ------------------------ 色彩模块 --------------------------
         if MULTI_COLOR:
