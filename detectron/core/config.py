@@ -78,19 +78,19 @@ __C.TRAIN = AttrDict()
 # Initialize network with weights from this .pkl file
 __C.TRAIN.WEIGHTS = ''
 # MASKRCNN SWITH
-__C.TRAIN.MASKRCNN_SWITCH =  True
+__C.TRAIN.MASKRCNN_SWITCH = False
 # negative
 __C.TRAIN.NEGATIVE =  True
 # 是否做多尺度
 # If multi_scale is True . To do multi-scale-process on datasets
 __C.TRAIN.MULTI_SCALE =  True
-__C.TRAIN.CROP_SCALE =  0.6
-__C.TRAIN.CROP_WIDTH =  [0.5, 0.6]
-__C.TRAIN.CROP_HEIGHT =  [0.5, 0.6]
+__C.TRAIN.CROP_SCALE =  0.5
+__C.TRAIN.CROP_WIDTH =  0.5
+__C.TRAIN.CROP_HEIGHT =  0.5
 # 是否做多色彩变换
 __C.TRAIN.MULTI_COLOR =  False
 # 是否旋转
-__C.TRAIN.ROTATION =  False
+__C.TRAIN.ROTATION =  True
 # Do gauss 
 __C.TRAIN.GAUSSIAN = 0.1
 __C.TRAIN.GAUSSIAN_KERNEL = 5
@@ -101,9 +101,21 @@ __C.TRAIN.CAB = 0.1
 __C.TRAIN.ALPHA = 0.7
 __C.TRAIN.GAMMA = 0
 
+# Do HSV darker
+__C.TRAIN.HSV = 0.1
+__C.TRAIN.HSV_THRESHOLD = 0.8
+
+# Do bright_trans
+__C.TRAIN.BRIGHT = 0.1
+__C.TRAIN.BRIGHT_THRESHOLD = 0.8
+
+# Do gamma translate
+__C.TRAIN.GAMMA = 0.1
+__C.TRAIN.GAMMA_THRESHOLD = 0.8
+
 # Do rotation
 __C.TRAIN.ROT = 0.5  # 旋转数据的概率
-__C.TRAIN.ROT_RANDOM = False  # False则转90,180,270
+__C.TRAIN.ROT_RANDOM = False # False则转90,180,270
 __C.TRAIN.ROT_RANDOM_ANGLE = 180   # 如果__C.TRAIN.ROT_RANDOM为True,则此设置控制旋转的角度范围
 
 # Datasets to train on
@@ -128,7 +140,7 @@ __C.TRAIN.IMS_PER_BATCH = 1
 # Total number of RoIs per training minibatch =
 #   TRAIN.BATCH_SIZE_PER_IM * TRAIN.IMS_PER_BATCH * NUM_GPUS
 # E.g., a common configuration is: 512 * 2 * 8 = 8192
-__C.TRAIN.BATCH_SIZE_PER_IM = 256
+__C.TRAIN.BATCH_SIZE_PER_IM = 64
 
 # Target fraction of RoI minibatch that is labeled foreground (i.e. class > 0)
 __C.TRAIN.FG_FRACTION = 0.25
@@ -187,7 +199,7 @@ __C.TRAIN.RPN_NEGATIVE_OVERLAP = 0.3
 __C.TRAIN.RPN_FG_FRACTION = 0.5
 
 # Total number of RPN examples per image
-__C.TRAIN.RPN_BATCH_SIZE_PER_IM = 64
+__C.TRAIN.RPN_BATCH_SIZE_PER_IM = 256
 
 # NMS threshold used on RPN proposals (used during end-to-end training with RPN)
 __C.TRAIN.RPN_NMS_THRESH = 0.7
